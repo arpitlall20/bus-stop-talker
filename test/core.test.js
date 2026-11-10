@@ -58,8 +58,15 @@ test('wait wording', () => {
 test('spoken sentence', () => {
   const stop = { name: 'King George Square, 2c', distance: 22 };
   const s = describeArrivals(stop, [{ route: '199', destination: 'Teneriffe', secondsAway: 200 }, { route: '61', destination: null, secondsAway: 10 }], { accuracyM: 50 });
-  assert.strictEqual(s, 'King George Square, 2c, 20 metres away. Your location is only accurate to about 50 metres. Route 199 to Teneriffe, in 3 minutes. Route 61, due now.');
+  assert.strictEqual(s, 'King George Square, 2c, 20 metres away. Your location is only accurate to about 50 metres. Route 199 to Teneriffe, in 3 minutes. Route 61, due now. No more buses are showing in the next hour or so.');
   assert.match(describeArrivals(stop, []), /No live buses/);
+});
+
+test('one bus says there are no others, three buses says nothing extra', () => {
+  const stop = { name: 'Stop', distance: 5 };
+  const bus = { route: '61', destination: null, secondsAway: 300 };
+  assert.match(describeArrivals(stop, [bus]), /Route 61, in 5 minutes\. No other buses are showing in the next hour or so\.$/);
+  assert.doesNotMatch(describeArrivals(stop, [bus, bus, bus]), /No (other|more) buses/);
 });
 
 test('destination table round-trips', () => {

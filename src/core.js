@@ -18,9 +18,7 @@ function distanceMetres(lat1, lon1, lat2, lon2) {
   const rad = Math.PI / 180;
   const dLat = (lat2 - lat1) * rad;
   const dLon = (lon2 - lon1) * rad;
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(lat1 * rad) * Math.cos(lat2 * rad) * Math.sin(dLon / 2) ** 2;
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * rad) * Math.cos(lat2 * rad) * Math.sin(dLon / 2) ** 2;
   return 2 * EARTH_RADIUS_M * Math.asin(Math.sqrt(a));
 }
 
@@ -43,7 +41,12 @@ function nearestStops(stops, lat, lon, n = 3) {
 // feed: a decoded GTFS-realtime FeedMessage (TripUpdates).
 // Returns the next `limit` buses due at stopId, soonest first.
 // destinationOf: tripId -> destination name or null.
-function nextBuses(feed, stopId, nowSec, { routes = {}, destinationOf = () => null, limit = 3, graceSec = 15 } = {}) {
+function nextBuses(
+  feed,
+  stopId,
+  nowSec,
+  { routes = {}, destinationOf = () => null, limit = 3, graceSec = 15 } = {},
+) {
   const found = [];
   for (const entity of feed.entity || []) {
     const tu = entity.tripUpdate;
@@ -97,8 +100,24 @@ function describeArrivals(stop, buses, { accuracyM = null } = {}) {
       const to = b.destination ? ` to ${b.destination}` : '';
       parts.push(`Route ${b.route}${to}, ${describeWait(b.secondsAway)}.`);
     }
+    // The live feed only reaches about an hour ahead, so say so instead of leaving the rider wondering.
+    if (buses.length < 3) {
+      parts.push(
+        buses.length === 1
+          ? 'No other buses are showing in the next hour or so.'
+          : 'No more buses are showing in the next hour or so.',
+      );
+    }
   }
   return parts.join(' ');
 }
 
-module.exports = { toNum, distanceMetres, nearestStops, nextBuses, describeWait, describeDistance, describeArrivals };
+module.exports = {
+  toNum,
+  distanceMetres,
+  nearestStops,
+  nextBuses,
+  describeWait,
+  describeDistance,
+  describeArrivals,
+};

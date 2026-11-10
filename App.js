@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AccessibilityInfo, Pressable, StyleSheet, Text, View } from 'react-native';
+import { AccessibilityInfo, Platform, Pressable, StyleSheet, Text, Vibration, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import * as Location from 'expo-location';
@@ -16,6 +16,12 @@ import destinationData from './src/data/destinations.json';
 const FEED_MAX_AGE_MS = 20000; // reuse the live feed for 20 s when switching stops
 const NEARBY_STOPS = 3;
 
+// A full vibration you can feel through a pocket: one long buzz on iPhone (iOS ignores patterns),
+// two buzzes on Android. Haptic taps alone are too light to notice.
+function buzzReady() {
+  Vibration.vibrate(Platform.OS === 'android' ? [0, 400, 200, 400] : 400);
+}
+
 let destinationOf = null;
 function getDestinationOf() {
   if (!destinationOf) destinationOf = decodeDestinations(destinationData);
@@ -27,7 +33,9 @@ function getDestinationOf() {
 async function say(text) {
   const screenReaderOn = await AccessibilityInfo.isScreenReaderEnabled();
   if (screenReaderOn) {
-    AccessibilityInfo.announceForAccessibility(text);
+    // Wait for the screen to settle, then queue the announcement so VoiceOver doesn't cut it short.
+    await new Promise((r) => setTimeout(r, 400));
+    AccessibilityInfo.announceForAccessibilityWithOptions(text, { queue: true });
   } else {
     await Speech.stop();
     Speech.speak(text, { language: 'en-AU' });
@@ -55,26 +63,27 @@ export default function App() {
     const feed = await getFeed();
     const now = Math.floor(Date.now() / 1000);
     const buses = nextBuses(feed, stop.id, now, { routes, destinationOf: getDestinationOf() });
-    const text = describeArrivals(stop, buses, { accuracyM: accuracy.current });
-    setMessage(text);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-    await say(text);
+    return describeArrivals(stop, buses, { accuracyM: accuracy.current });
   }, [getFeed]);
 
   const run = useCallback(
     async (job) => {
       if (busy) return;
       setBusy(true);
+      let text;
+      let ok = false;
       try {
-        await job();
+        text = await job();
+        ok = true;
       } catch (e) {
-        const text = `Sorry, that didn't work. ${e.message || ''}`.trim();
-        setMessage(text);
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
-        await say(text);
-      } finally {
-        setBusy(false);
+        text = `Sorry, that didn't work. ${e.message || ''}`.trim();
       }
+      // Update the screen first and speak after, so a screen change can't interrupt the speech.
+      setBusy(false);
+      setMessage(text);
+      if (ok) buzzReady();
+      else Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
+      await say(text);
     },
     [busy],
   );
@@ -94,7 +103,7 @@ export default function App() {
       stopIndex.current = 0;
       if (nearby.current.length === 0) throw new Error('No bus stops were found within about 5 kilometres.');
       feedCache.current = { feed: null, at: 0 }; // always fresh on the main button
-      await announceStop();
+      return announceStop();
     });
 
   const onOtherStop = () =>
@@ -103,7 +112,7 @@ export default function App() {
         throw new Error('Press the big button first to find nearby stops.');
       }
       stopIndex.current = (stopIndex.current + 1) % nearby.current.length;
-      await announceStop();
+      return announceStop();
     });
 
   const onRepeat = () => say(message);
@@ -127,7 +136,7 @@ export default function App() {
           accessibilityHint="Finds your nearest stop and reads out the next three buses"
           accessibilityState={{ busy }}
         >
-          <Text style={styles.bigText}>{busy ? 'Checking…' : 'Next buses'}</Text>
+          <Text style={styles.bigText}>Next buses</Text>
         </Pressable>
 
         <View style={styles.row}>
